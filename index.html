@@ -8,74 +8,33 @@
   <link rel="manifest" href="manifest.json" />
 
   <style>
-    body {
-      margin: 0;
-      font-family: Arial;
-      background: #f3f4f6;
-    }
-    header {
-      background: #4f46e5;
-      color: white;
-      padding: 15px;
-      text-align: center;
-      font-size: 22px;
-      font-weight: bold;
-    }
-    .container {
-      max-width: 900px;
-      margin: auto;
-      padding: 20px;
-    }
-    .form {
-      display: flex;
-      gap: 10px;
-      flex-wrap: wrap;
-      margin-bottom: 20px;
-    }
-    input, button {
-      padding: 10px;
-      font-size: 16px;
-    }
-    input[type="text"] { flex: 2; }
-    input[type="datetime-local"] { flex: 1.5; }
-    button {
-      background: #4f46e5;
-      color: white;
-      border: none;
-      cursor: pointer;
-    }
-    table {
-      width: 100%;
-      background: white;
-      border-collapse: collapse;
-    }
-    th, td {
-      padding: 10px;
-      border-bottom: 1px solid #ddd;
-      text-align: center;
-    }
-    tr.completed {
-      text-decoration: line-through;
-      opacity: 0.5;
-    }
-    .delete {
-      background: red;
-      color: white;
-      border: none;
-      padding: 5px 10px;
-      cursor: pointer;
-    }
+    body { margin:0; font-family:Arial; background:#f3f4f6; }
+    header { background:#4f46e5; color:white; padding:15px; text-align:center; font-size:22px; font-weight:bold; }
+    .container { max-width:900px; margin:auto; padding:20px; }
+    .form { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:20px; }
+    input, button { padding:10px; font-size:16px; }
+    input[type="text"]{ flex:2; }
+    input[type="datetime-local"]{ flex:1.5; }
+    button { background:#4f46e5; color:white; border:none; cursor:pointer; }
+    table { width:100%; background:white; border-collapse:collapse; }
+    th, td { padding:10px; border-bottom:1px solid #ddd; text-align:center; }
+    tr.completed { text-decoration:line-through; opacity:0.5; }
+    .delete { background:red; color:white; border:none; padding:5px 10px; cursor:pointer; }
+    .repeat-label { font-size:14px; }
   </style>
 </head>
 
 <body>
 
-<header>ZenTask (Cloud Sync)</header>
+<header>ZenTask (Cloud + Daily Recurring)</header>
 
 <div class="container">
   <div class="form">
     <input type="text" id="taskInput" placeholder="Task topic">
     <input type="datetime-local" id="deadlineInput">
+    <label class="repeat-label">
+      <input type="checkbox" id="repeatInput"> Repeat Daily
+    </label>
     <button onclick="addTask()">Add</button>
   </div>
 
@@ -85,6 +44,7 @@
         <th>Done</th>
         <th>Task</th>
         <th>Deadline</th>
+        <th>Repeat</th>
         <th>Delete</th>
       </tr>
     </thead>
@@ -93,87 +53,106 @@
 </div>
 
 <script type="module">
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-  import { 
-    getFirestore, 
-    collection, 
-    addDoc, 
-    onSnapshot, 
-    deleteDoc, 
-    doc, 
-    updateDoc 
-  } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { 
+  getFirestore, 
+  collection, 
+  addDoc, 
+  onSnapshot, 
+  deleteDoc, 
+  doc, 
+  updateDoc 
+} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
-  const firebaseConfig = {
-    apiKey: "AIzaSyB1Z7JtGwQeuJRW3QScYCGFRfe7snyvzfw",
-    authDomain: "zentask-a9445.firebaseapp.com",
-    projectId: "zentask-a9445",
-    storageBucket: "zentask-a9445.firebasestorage.app",
-    messagingSenderId: "984918593234",
-    appId: "1:984918593234:web:6e8be13ec1ab6f71cae70b"
-  };
+const firebaseConfig = {
+  apiKey: "AIzaSyB1Z7JtGwQeuJRW3QScYCGFRfe7snyvzfw",
+  authDomain: "zentask-a9445.firebaseapp.com",
+  projectId: "zentask-a9445",
+  storageBucket: "zentask-a9445.firebasestorage.app",
+  messagingSenderId: "984918593234",
+  appId: "1:984918593234:web:6e8be13ec1ab6f71cae70b"
+};
 
-  const app = initializeApp(firebaseConfig);
-  const db = getFirestore(app);
-  const taskList = document.getElementById("taskList");
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+const tasksCollection = collection(db, "tasks");
+const taskList = document.getElementById("taskList");
 
-  const tasksCollection = collection(db, "tasks");
+function todayString(){
+  return new Date().toISOString().split("T")[0];
+}
 
-  window.addTask = async function () {
-    const text = taskInput.value.trim();
-    const deadline = deadlineInput.value;
+window.addTask = async function () {
+  const text = taskInput.value.trim();
+  const deadline = deadlineInput.value;
+  const repeatDaily = repeatInput.checked;
 
-    if (!text || !deadline) {
-      alert("Enter task and deadline");
-      return;
-    }
-
-    await addDoc(tasksCollection, {
-      text,
-      deadline,
-      done: false
-    });
-
-    taskInput.value = "";
-    deadlineInput.value = "";
-  };
-
-  function renderTask(id, data) {
-    const tr = document.createElement("tr");
-    if (data.done) tr.classList.add("completed");
-
-    tr.innerHTML = `
-      <td>
-        <input type="checkbox" ${data.done ? "checked" : ""}>
-      </td>
-      <td>${data.text}</td>
-      <td>${new Date(data.deadline).toLocaleString()}</td>
-      <td><button class="delete">X</button></td>
-    `;
-
-    tr.querySelector("input").addEventListener("change", async (e) => {
-      await updateDoc(doc(db, "tasks", id), {
-        done: e.target.checked
-      });
-    });
-
-    tr.querySelector(".delete").addEventListener("click", async () => {
-      await deleteDoc(doc(db, "tasks", id));
-    });
-
-    taskList.appendChild(tr);
+  if (!text || !deadline) {
+    alert("Enter task and deadline");
+    return;
   }
 
-  onSnapshot(tasksCollection, (snapshot) => {
-    taskList.innerHTML = "";
-    snapshot.forEach(docSnap => {
-      renderTask(docSnap.id, docSnap.data());
+  await addDoc(tasksCollection, {
+    text,
+    deadline,
+    done: false,
+    repeatDaily,
+    lastCompletedDate: null
+  });
+
+  taskInput.value="";
+  deadlineInput.value="";
+  repeatInput.checked=false;
+};
+
+async function autoResetIfNeeded(id,data){
+  if(data.repeatDaily && data.done){
+    if(data.lastCompletedDate !== todayString()){
+      await updateDoc(doc(db,"tasks",id),{
+        done:false
+      });
+    }
+  }
+}
+
+function renderTask(id,data){
+  const tr=document.createElement("tr");
+  if(data.done) tr.classList.add("completed");
+
+  tr.innerHTML=`
+    <td><input type="checkbox" ${data.done?"checked":""}></td>
+    <td>${data.text}</td>
+    <td>${new Date(data.deadline).toLocaleString()}</td>
+    <td>${data.repeatDaily?"Daily":""}</td>
+    <td><button class="delete">X</button></td>
+  `;
+
+  tr.querySelector("input").addEventListener("change", async (e)=>{
+    await updateDoc(doc(db,"tasks",id),{
+      done:e.target.checked,
+      lastCompletedDate:e.target.checked?todayString():null
     });
   });
 
-  if ("serviceWorker" in navigator) {
-    navigator.serviceWorker.register("service-worker.js");
+  tr.querySelector(".delete").addEventListener("click",async()=>{
+    await deleteDoc(doc(db,"tasks",id));
+  });
+
+  taskList.appendChild(tr);
+}
+
+onSnapshot(tasksCollection, async(snapshot)=>{
+  taskList.innerHTML="";
+  for(const docSnap of snapshot.docs){
+    const data=docSnap.data();
+    await autoResetIfNeeded(docSnap.id,data);
+    renderTask(docSnap.id,data);
   }
+});
+
+if("serviceWorker" in navigator){
+  navigator.serviceWorker.register("service-worker.js");
+}
 </script>
 
 </body>
